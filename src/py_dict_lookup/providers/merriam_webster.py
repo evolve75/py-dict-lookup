@@ -1,11 +1,7 @@
 """
 py_dict_lookup.providers.merriam_webster
 
-Minimal Merriam-Webster provider implementation.
-
-This module targets the Merriam-Webster Dictionary API products referenced in README.md:
-- Collegiate Dictionary (definitions)
-- Collegiate Thesaurus (synonyms)
+Merriam-Webster provider implementation (registered as provider name 'mw').
 
 Endpoints (JSON):
 - Collegiate Dictionary:
@@ -13,7 +9,7 @@ Endpoints (JSON):
 - Collegiate Thesaurus:
   https://www.dictionaryapi.com/api/v3/references/thesaurus/json/{word}?key=...
 
-Notes on response shape:
+Response shape:
 - Successful lookups typically return a JSON list of entry objects.
 - “Not found” responses often return a JSON list of strings (spelling suggestions).
 """
@@ -21,122 +17,87 @@ Notes on response shape:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Final, Iterable, Mapping, Sequence
+from typing import Any, Final, Mapping, Sequence
 from urllib.parse import quote
 
 import httpx
 
-__all__ = [
-    "LookupResult",
-    "NotFound",
-    "MerriamWebsterError",
-    "get_definitions",
-    "get_synonyms",
-]
+from py_dict_lookup.config import Settings
+from py_dict_lookup.providers.base import (
+    DefinitionResult,
+    NotFound,
+    Provider,
+    ProviderError,
+    SynonymsResult,
+)
 
-_COLLEGIATE_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
-_THESAURUS_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
-
-
-class MerriamWebsterError(RuntimeError):
-    """Base error for Merriam-Webster provider failures."""
-
-
-@dataclass(frozen=True, slots=True)
-class NotFound(MerriamWebsterError):
-    """
-    Raised when a word is not found.
-
-    Merriam-Webster frequently returns a list of suggestion strings in this case.
-    """
-
-    word: str
-    suggestions: tuple[str, ...] = ()
+_COLLEGIATE_BASE_URL: Final[str] = (
+    "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
+)
+_THESAURUS_BASE_URL: Final[str] = (
+    "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
+)
 
 
 @dataclass(frozen=True, slots=True)
-class LookupResult:
-    """Common shape returned by lookups."""
+class MerriamWebsterProvider(Provider):
+    """Merriam-Webster provider ('mw')."""
 
-    word: str
-    items: tuple[str, ...]
+    settings: Settings
+    name: str = "mw"
+
+    def define(self, word: str, *, timeout_seconds: float) -> DefinitionResult:
+        key = _require(self.settings.mw_collegiate_key, "MW_COLLEGIATE_KEY")
+        w = _normalize_word(word)
+        payload = _fetch_json(
+            base_url=_COLLEGIATE_BASE_URL,
+            word=w,
+            api_key=key,
+            timeout_seconds=timeout_seconds,
+        )
+        entries = _as_entries_or_raise_not_found(word=w, payload=payload)
+        defs = _extract_shortdef(entries)
+        if not defs:
+            raise NotFound(word=w)
+        return DefinitionResult(word=w, items=tuple(defs))
+
+    def synonyms(
+        self, word: str, *, limit: int, timeout_seconds: float
+    ) -> SynonymsResult:
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+
+        key = _require(self.settings.mw_thesaurus_key, "MW_THESAURUS_KEY")
+        w = _normalize_word(word)
+        payload = _fetch_json(
+            base_url=_THESAURUS_BASE_URL,
+            word=w,
+            api_key=key,
+            timeout_seconds=timeout_seconds,
+        )
+        entries = _as_entries_or_raise_not_found(word=w, payload=payload)
+        syns = _extract_synonyms(entries)
+
+        # De-dupe while preserving order
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for s in syns:
+            if s not in seen:
+                seen.add(s)
+                ordered.append(s)
+            if len(ordered) >= limit:
+                break
+
+        if not ordered:
+            raise NotFound(word=w)
+        return SynonymsResult(word=w, items=tuple(ordered))
 
 
-def get_definitions(
-    *,
-    word: str,
-    api_key: str,
-    timeout_seconds: float = 10.0,
-) -> LookupResult:
-    """
-    Look up short definitions for a word via the Collegiate Dictionary API.
-
-    Returns:
-        LookupResult where `items` are definitions (strings).
-
-    Raises:
-        NotFound: if the API returns no entries (optionally with suggestions)
-        MerriamWebsterError: for network/HTTP/protocol issues
-    """
-    w = _normalize_word(word)
-    payload = _fetch_json(
-        base_url=_COLLEGIATE_BASE_URL,
-        word=w,
-        api_key=api_key,
-        timeout_seconds=timeout_seconds,
-    )
-    entries = _as_entries_or_raise_not_found(word=w, payload=payload)
-    defs = _extract_shortdef(entries)
-    if not defs:
-        # Some entries might not contain `shortdef`; treat as not found-ish for CLI purposes.
-        raise NotFound(word=w)
-    return LookupResult(word=w, items=tuple(defs))
-
-
-def get_synonyms(
-    *,
-    word: str,
-    api_key: str,
-    limit: int = 10,
-    timeout_seconds: float = 10.0,
-) -> LookupResult:
-    """
-    Look up synonyms for a word via the Collegiate Thesaurus API.
-
-    Returns:
-        LookupResult where `items` are synonyms (strings), de-duplicated, up to `limit`.
-
-    Raises:
-        NotFound: if the API returns no entries (optionally with suggestions)
-        MerriamWebsterError: for network/HTTP/protocol issues
-        ValueError: if `limit` is invalid
-    """
-    if limit < 1:
-        raise ValueError("limit must be >= 1")
-
-    w = _normalize_word(word)
-    payload = _fetch_json(
-        base_url=_THESAURUS_BASE_URL,
-        word=w,
-        api_key=api_key,
-        timeout_seconds=timeout_seconds,
-    )
-    entries = _as_entries_or_raise_not_found(word=w, payload=payload)
-    syns = _extract_synonyms(entries)
-
-    # De-dupe while preserving order
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for s in syns:
-        if s not in seen:
-            seen.add(s)
-            ordered.append(s)
-        if len(ordered) >= limit:
-            break
-
-    if not ordered:
-        raise NotFound(word=w)
-    return LookupResult(word=w, items=tuple(ordered))
+def _require(value: str | None, env_name: str) -> str:
+    """Require a setting; raise ProviderError with a friendly message if missing."""
+    if value:
+        return value
+    raise ProviderError(f"Missing {env_name}. Set it in your environment or .env file.")
 
 
 def _fetch_json(*, base_url: str, word: str, api_key: str, timeout_seconds: float) -> Any:
@@ -150,45 +111,37 @@ def _fetch_json(*, base_url: str, word: str, api_key: str, timeout_seconds: floa
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPStatusError as e:
-        # Surface status code (e.g., 401 for bad key) without dumping huge body.
-        status = e.response.status_code
-        raise MerriamWebsterError(f"Merriam-Webster API HTTP error: {status}") from e
+        raise ProviderError(
+            f"Merriam-Webster API HTTP error: {e.response.status_code}"
+        ) from e
     except httpx.RequestError as e:
-        raise MerriamWebsterError(f"Network error contacting Merriam-Webster API: {e}") from e
+        raise ProviderError(f"Network error contacting Merriam-Webster API: {e}") from e
     except ValueError as e:
-        # JSON decode issues
-        raise MerriamWebsterError("Invalid JSON received from Merriam-Webster API") from e
+        raise ProviderError("Invalid JSON received from Merriam-Webster API") from e
 
 
 def _as_entries_or_raise_not_found(*, word: str, payload: Any) -> list[Mapping[str, Any]]:
-    """
-    Convert the API payload into a list of entry mappings.
-
-    MW “not found” commonly returns: ["suggestion1", "suggestion2", ...]
-    """
+    """Convert payload into entry dicts, or raise NotFound (with suggestions if present)."""
     if not isinstance(payload, list):
-        raise MerriamWebsterError("Unexpected API response shape (expected a JSON list)")
-
+        raise ProviderError("Unexpected API response shape (expected a JSON list)")
     if not payload:
         raise NotFound(word=word)
 
-    # Suggestions-only case (list[str])
     if all(isinstance(x, str) for x in payload):
-        suggestions = tuple(str(x) for x in payload)
-        raise NotFound(word=word, suggestions=suggestions)
+        raise NotFound(word=word, suggestions=tuple(payload))
 
-    # Entries case (list[dict])
     entries: list[Mapping[str, Any]] = []
     for item in payload:
         if isinstance(item, Mapping):
             entries.append(item)
+
     if not entries:
         raise NotFound(word=word)
     return entries
 
 
 def _extract_shortdef(entries: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Extract `shortdef` strings from Collegiate dictionary entries."""
+    """Extract `shortdef` strings from dictionary entries."""
     out: list[str] = []
     for entry in entries:
         shortdef = entry.get("shortdef")
@@ -201,10 +154,7 @@ def _extract_shortdef(entries: Sequence[Mapping[str, Any]]) -> list[str]:
 
 def _extract_synonyms(entries: Sequence[Mapping[str, Any]]) -> list[str]:
     """
-    Extract synonyms from Thesaurus entries.
-
-    Thesaurus entries typically use:
-      entry["meta"]["syns"] -> list[list[str]]
+    Extract synonyms from thesaurus entries via entry['meta']['syns'] (list[list[str]]).
     """
     out: list[str] = []
     for entry in entries:
@@ -214,8 +164,6 @@ def _extract_synonyms(entries: Sequence[Mapping[str, Any]]) -> list[str]:
         syns = meta.get("syns")
         if not isinstance(syns, list):
             continue
-
-        # Flatten list[list[str]] safely
         for group in syns:
             if isinstance(group, list):
                 for s in group:
@@ -225,8 +173,10 @@ def _extract_synonyms(entries: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def _normalize_word(word: str) -> str:
-    """Normalize a user-provided word for lookup."""
     w = word.strip()
     if not w:
         raise ValueError("word must not be empty")
     return w
+
+
+__all__ = ["MerriamWebsterProvider"]

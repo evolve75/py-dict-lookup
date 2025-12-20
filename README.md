@@ -70,6 +70,23 @@ uv run py-dict-lookup synonyms serendipity  # as an example
 uv run py-dict-lookup synonyms serendipity --limit 5
 ```
 
+## Providers
+
+The tool supports multiple dictionary providers via a pluggable provider
+architecture.
+
+### Default provider
+
+The default provider is:
+
+- `mw`: Merriam-Webster (Collegiate Dictionary + Thesaurus)
+
+### List available providers
+
+```bash
+uv run py-dict-lookup providers
+```
+
 ## Notes
 
 - This project currently targets online lookups only.
