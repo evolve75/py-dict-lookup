@@ -31,12 +31,8 @@ from py_dict_lookup.providers.base import (
     SynonymsResult,
 )
 
-_COLLEGIATE_BASE_URL: Final[str] = (
-    "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
-)
-_THESAURUS_BASE_URL: Final[str] = (
-    "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
-)
+_COLLEGIATE_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
+_THESAURUS_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,9 +57,7 @@ class MerriamWebsterProvider(Provider):
             raise NotFound(word=w)
         return DefinitionResult(word=w, items=tuple(defs))
 
-    def synonyms(
-        self, word: str, *, limit: int, timeout_seconds: float
-    ) -> SynonymsResult:
+    def synonyms(self, word: str, *, limit: int, timeout_seconds: float) -> SynonymsResult:
         if limit < 1:
             raise ValueError("limit must be >= 1")
 
@@ -111,9 +105,7 @@ def _fetch_json(*, base_url: str, word: str, api_key: str, timeout_seconds: floa
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPStatusError as e:
-        raise ProviderError(
-            f"Merriam-Webster API HTTP error: {e.response.status_code}"
-        ) from e
+        raise ProviderError(f"Merriam-Webster API HTTP error: {e.response.status_code}") from e
     except httpx.RequestError as e:
         raise ProviderError(f"Network error contacting Merriam-Webster API: {e}") from e
     except ValueError as e:

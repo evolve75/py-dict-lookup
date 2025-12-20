@@ -54,9 +54,7 @@ class Provider(Protocol):
     name: str
 
     def define(self, word: str, *, timeout_seconds: float) -> DefinitionResult: ...
-    def synonyms(
-        self, word: str, *, limit: int, timeout_seconds: float
-    ) -> SynonymsResult: ...
+    def synonyms(self, word: str, *, limit: int, timeout_seconds: float) -> SynonymsResult: ...
 
 
 __all__ = [

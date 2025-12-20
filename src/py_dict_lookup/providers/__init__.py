@@ -22,9 +22,11 @@ from py_dict_lookup.providers.registry import (
     register_provider,
 )
 
+
 def register_builtin_providers() -> None:
     """Register built-in providers shipped with this package."""
     register_provider("mw", lambda settings: MerriamWebsterProvider(settings))
+
 
 __all__ = [
     "Provider",

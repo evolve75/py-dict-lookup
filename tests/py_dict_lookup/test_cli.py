@@ -212,6 +212,7 @@ def test_not_found_includes_suggestions_text(monkeypatch: pytest.MonkeyPatch) ->
 # JSON output tests
 # -------------------------
 
+
 def test_define_json() -> None:
     res = runner.invoke(app, ["--json", "define", "test"])
     assert res.exit_code == 0
