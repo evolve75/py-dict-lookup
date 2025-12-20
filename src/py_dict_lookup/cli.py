@@ -38,6 +38,10 @@ from py_dict_lookup.providers import (
     list_providers,
 )
 
+from py_dict_lookup.providers import register_builtin_providers
+
+register_builtin_providers()
+
 APP_NAME: Final[str] = "py-dict-lookup"
 console = Console()
 
