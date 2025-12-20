@@ -26,6 +26,13 @@ from urllib.parse import quote
 
 import httpx
 
+__all__ = [
+    "LookupResult",
+    "NotFound",
+    "MerriamWebsterError",
+    "get_definitions",
+    "get_synonyms",
+]
 
 _COLLEGIATE_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
 _THESAURUS_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
