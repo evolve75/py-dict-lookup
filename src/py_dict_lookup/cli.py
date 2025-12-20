@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import asdict, is_dataclass
-from typing import Any, Final
+from typing import Any, Final, TypeGuard, cast
 
 import typer
 from rich.console import Console
@@ -40,8 +40,8 @@ from py_dict_lookup.providers import (
     ProviderError,
     get_provider,
     list_providers,
+    register_builtin_providers,
 )
-from py_dict_lookup.providers import register_builtin_providers
 
 register_builtin_providers()
 
@@ -55,6 +55,7 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Look up word definitions and synonyms from the command line.",
 )
+
 
 def _plain_output() -> bool:
     return not sys.stdout.isatty()
@@ -80,15 +81,27 @@ def _print_section_md(title: str, word: str, items: tuple[str, ...]) -> None:
     console.print(Markdown("\n".join(lines)))
 
 
+def _is_dataclass_instance(obj: Any) -> TypeGuard[Any]:
+    """
+    True only for *instances* of dataclasses (not dataclass *types*).
+
+    `dataclasses.is_dataclass()` returns True for both dataclass instances and
+    dataclass classes; mypy needs us to exclude classes before calling `asdict()`.
+    """
+    return is_dataclass(obj) and not isinstance(obj, type)
+
+
 def _emit_json(obj: Any) -> None:
     """
     Emit JSON to stdout.
 
     This bypasses Rich formatting and ensures a clean machine-readable payload.
     """
+
     def default(o: Any) -> Any:
-        if is_dataclass(o):
-            return asdict(o)
+        if _is_dataclass_instance(o):
+            # mypy: asdict expects a dataclass instance; we've ensured that above.
+            return asdict(cast(Any, o))
         raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
     sys.stdout.write(json.dumps(obj, ensure_ascii=False, default=default))
@@ -257,7 +270,7 @@ def lookup(
 
 
 @app.command("l")
-def l(
+def lookup_alias(
     ctx: typer.Context,
     word: str = typer.Argument(..., help="Alias for 'lookup'."),
     limit: int = typer.Option(
@@ -297,7 +310,7 @@ def define(
 
 
 @app.command("d")
-def d(
+def define_alias(
     ctx: typer.Context,
     word: str = typer.Argument(..., help="Alias for 'define'."),
 ) -> None:
@@ -338,7 +351,7 @@ def synonyms(
 
 
 @app.command("s")
-def s(
+def synonyms_alias(
     ctx: typer.Context,
     word: str = typer.Argument(..., help="Alias for 'synonyms'."),
     limit: int = typer.Option(
@@ -371,7 +384,7 @@ def providers(ctx: typer.Context) -> None:
 
 
 @app.command("p")
-def p(ctx: typer.Context) -> None:
+def providers_alias(ctx: typer.Context) -> None:
     """Alias for providers."""
     providers(ctx)
 

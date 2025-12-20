@@ -44,6 +44,7 @@ py-dict-lookup = "py_dict_lookup.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/py_dict_lookup"]
+include = ["src/py_dict_lookup/py.typed"]
 
 [tool.ruff]
 line-length = 100

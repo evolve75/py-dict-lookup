@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from py_dict_lookup.config import DEFAULT_TIMEOUT_SECONDS, Settings
 
 

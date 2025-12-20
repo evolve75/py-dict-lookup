@@ -8,12 +8,8 @@ console script defined in pyproject.toml, ensuring consistent behavior
 regardless of how the CLI is invoked.
 """
 
-from py_dict_lookup.cli import _run
+from py_dict_lookup.cli import app
 
 
 if __name__ == "__main__":
-    _run()
-from py_dict_lookup.cli import _run
-
-if __name__ == "__main__":
-    _run()
+    app()
