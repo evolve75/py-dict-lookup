@@ -52,6 +52,17 @@ Run the CLI via `uv run`:
 uv run py-dict-lookup --help
 ```
 
+## JSON output
+Use `--json` to emit machine-readable JSON.
+
+Important: `--json` is a **global option**, so it must come **before** the subcommand:
+
+```bash
+uv run py-dict-lookup --json define serendipity
+uv run py-dict-lookup --json synonyms fast --limit 5
+uv run py-dict-lookup --json lookup serendipity --limit 10
+```
+
 ### Lookup a definition
 
 ```bash
@@ -68,6 +79,20 @@ uv run py-dict-lookup synonyms serendipity  # as an example
 
 ```bash
 uv run py-dict-lookup synonyms serendipity --limit 5
+```
+
+### Lookup both the definition and the synonyms
+
+```bash
+uv run py-dict-lookup lookup serendipity
+```
+
+You can also use the short aliases:
+
+```bash
+uv run py-dict-lookup d serendipity
+uv run py-dict-lookup s serendipity -n 5
+uv run py-dict-lookup l serendipity -n 10
 ```
 
 ## Providers

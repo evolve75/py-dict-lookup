@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -7,7 +8,13 @@ from typer.testing import CliRunner
 
 from py_dict_lookup.cli import app
 from py_dict_lookup.providers import registry as reg
-from py_dict_lookup.providers.base import DefinitionResult, NotFound, Provider, ProviderError, SynonymsResult
+from py_dict_lookup.providers.base import (
+    DefinitionResult,
+    NotFound,
+    Provider,
+    ProviderError,
+    SynonymsResult,
+)
 
 runner = CliRunner()
 
@@ -56,6 +63,14 @@ def fake_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reg, "_PROVIDERS", {"mw": lambda settings: FakeProvider()}, raising=True)
 
 
+def _parse_json_output(res_output: str) -> dict:
+    """
+    Helper for parsing JSON output.
+    We strip to tolerate trailing newlines.
+    """
+    return json.loads(res_output.strip())
+
+
 def test_version_runs_without_command() -> None:
     res = runner.invoke(app, ["--version"])
     assert res.exit_code == 0
@@ -71,11 +86,11 @@ def test_help_shows_commands_and_aliases() -> None:
     assert "synonyms" in out
     assert "lookup" in out
     assert "providers" in out
-    # Aliases
-    assert "\n│ d" in out or " d " in out
-    assert "\n│ s" in out or " s " in out
-    assert "\n│ l" in out or " l " in out
-    assert "\n│ p" in out or " p " in out
+    # Aliases (format can vary by terminal width / Click rendering)
+    assert " d " in out or "\n│ d" in out
+    assert " s " in out or "\n│ s" in out
+    assert " l " in out or "\n│ l" in out
+    assert " p " in out or "\n│ p" in out
 
 
 def test_providers_lists_mw() -> None:
@@ -160,13 +175,13 @@ def test_lookup_missing_word_is_error() -> None:
     assert "WORD" in res.output
 
 
-def test_unknown_provider_is_error() -> None:
+def test_unknown_provider_is_error_text() -> None:
     res = runner.invoke(app, ["--provider", "nope", "define", "x"])
     assert res.exit_code != 0
     assert "Unknown provider" in res.output
 
 
-def test_provider_error_is_shown(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_error_is_shown_text(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         reg,
         "_PROVIDERS",
@@ -178,7 +193,7 @@ def test_provider_error_is_shown(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "boom" in res.output
 
 
-def test_not_found_includes_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_not_found_includes_suggestions_text(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         reg,
         "_PROVIDERS",
@@ -191,3 +206,78 @@ def test_not_found_includes_suggestions(monkeypatch: pytest.MonkeyPatch) -> None
     assert "Suggestions" in res.output
     assert "alpha" in res.output
     assert "beta" in res.output
+
+
+# -------------------------
+# JSON output tests
+# -------------------------
+
+def test_define_json() -> None:
+    res = runner.invoke(app, ["--json", "define", "test"])
+    assert res.exit_code == 0
+    payload = _parse_json_output(res.output)
+    assert payload["provider"] == "mw"
+    assert payload["word"] == "test"
+    assert payload["definitions"] == ["fake definition"]
+
+
+def test_synonyms_json_default_limit() -> None:
+    res = runner.invoke(app, ["--json", "synonyms", "fast"])
+    assert res.exit_code == 0
+    payload = _parse_json_output(res.output)
+    assert payload["provider"] == "mw"
+    assert payload["word"] == "fast"
+    assert payload["synonyms"][-1] == "syn10"
+    assert len(payload["synonyms"]) == 10
+
+
+def test_lookup_json() -> None:
+    res = runner.invoke(app, ["--json", "lookup", "serendipity", "--limit", "3"])
+    assert res.exit_code == 0
+    payload = _parse_json_output(res.output)
+    assert payload["provider"] == "mw"
+    assert payload["word"] == "serendipity"
+    assert payload["definitions"] == ["fake definition"]
+    assert payload["synonyms"] == ["syn1", "syn2", "syn3"]
+
+
+def test_providers_json() -> None:
+    res = runner.invoke(app, ["--json", "providers"])
+    assert res.exit_code == 0
+    payload = _parse_json_output(res.output)
+    assert payload["providers"] == ["mw"]
+
+
+def test_unknown_provider_is_error_json() -> None:
+    res = runner.invoke(app, ["--json", "--provider", "nope", "define", "x"])
+    assert res.exit_code != 0
+    payload = _parse_json_output(res.output)
+    assert "error" in payload
+    assert "Unknown provider" in payload["error"]
+
+
+def test_provider_error_is_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        reg,
+        "_PROVIDERS",
+        {"mw": lambda settings: ErroringProvider(mode="provider_error")},
+        raising=True,
+    )
+    res = runner.invoke(app, ["--json", "define", "x"])
+    assert res.exit_code != 0
+    payload = _parse_json_output(res.output)
+    assert payload["error"] == "boom"
+
+
+def test_not_found_is_json_with_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        reg,
+        "_PROVIDERS",
+        {"mw": lambda settings: ErroringProvider(mode="not_found")},
+        raising=True,
+    )
+    res = runner.invoke(app, ["--json", "define", "x"])
+    assert res.exit_code != 0
+    payload = _parse_json_output(res.output)
+    assert "not found" in payload["error"].lower()
+    assert payload["suggestions"] == ["alpha", "beta"]

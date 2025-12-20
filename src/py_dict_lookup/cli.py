@@ -12,6 +12,7 @@ Commands:
 Global options:
 - --provider / -p: select provider (default: mw)
 - --version / -v: show version
+- --json: emit machine-readable JSON output
 - --help: built-in (Click/Typer)
 
 Notes:
@@ -21,7 +22,10 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Final
+import json
+import sys
+from dataclasses import asdict, is_dataclass
+from typing import Any, Final
 
 import typer
 from rich.console import Console
@@ -37,7 +41,6 @@ from py_dict_lookup.providers import (
     get_provider,
     list_providers,
 )
-
 from py_dict_lookup.providers import register_builtin_providers
 
 register_builtin_providers()
@@ -65,6 +68,26 @@ def _print_section_md(title: str, word: str, items: tuple[str, ...]) -> None:
     console.print(Markdown("\n".join(lines)))
 
 
+def _emit_json(obj: Any) -> None:
+    """
+    Emit JSON to stdout.
+
+    This bypasses Rich formatting and ensures a clean machine-readable payload.
+    """
+    def default(o: Any) -> Any:
+        if is_dataclass(o):
+            return asdict(o)
+        raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False, default=default))
+    sys.stdout.write("\n")
+
+
+def _json_enabled(ctx: typer.Context) -> bool:
+    ctx.ensure_object(dict)
+    return bool(ctx.obj.get("json"))
+
+
 def _ctx_provider(ctx: typer.Context) -> str:
     ctx.ensure_object(dict)
     provider = ctx.obj.get("provider")
@@ -73,44 +96,77 @@ def _ctx_provider(ctx: typer.Context) -> str:
     return DEFAULT_PROVIDER
 
 
-def _run_define(ctx: typer.Context, word: str) -> None:
+def _emit_error(
+    ctx: typer.Context,
+    message: str,
+    *,
+    code: int = 2,
+    word: str | None = None,
+    suggestions: tuple[str, ...] | None = None,
+    error_type: str = "error",
+) -> None:
+    if _json_enabled(ctx):
+        payload: dict[str, Any] = {
+            "ok": False,
+            "error": message,
+            "type": error_type,
+            "provider": _ctx_provider(ctx),
+        }
+        if word is not None:
+            payload["word"] = word
+        if suggestions:
+            payload["suggestions"] = list(suggestions)
+        _emit_json(payload)
+    else:
+        _print_error(message)
+
+    raise typer.Exit(code=code)
+
+
+def _run_define(ctx: typer.Context, word: str):
     settings = Settings.from_env()
     provider_name = _ctx_provider(ctx)
 
     try:
         provider = get_provider(provider_name, settings)
-        result = provider.define(word, timeout_seconds=settings.timeout_seconds)
+        return provider.define(word, timeout_seconds=settings.timeout_seconds)
     except NotFound as e:
         msg = f"'{e.word}' not found."
         if e.suggestions:
             msg += "\n\nSuggestions:\n- " + "\n- ".join(e.suggestions[:10])
-        _print_error(msg)
-        raise typer.Exit(code=2)
+        _emit_error(
+            ctx,
+            msg,
+            code=2,
+            word=e.word,
+            suggestions=e.suggestions,
+            error_type="not_found",
+        )
     except ProviderError as e:
-        _print_error(str(e))
-        raise typer.Exit(code=2)
-
-    _print_section_md("Definitions", result.word, result.items)
+        _emit_error(ctx, str(e), code=2, error_type="provider_error")
 
 
-def _run_synonyms(ctx: typer.Context, word: str, limit: int) -> None:
+def _run_synonyms(ctx: typer.Context, word: str, limit: int):
     settings = Settings.from_env()
     provider_name = _ctx_provider(ctx)
 
     try:
         provider = get_provider(provider_name, settings)
-        result = provider.synonyms(word, limit=limit, timeout_seconds=settings.timeout_seconds)
+        return provider.synonyms(word, limit=limit, timeout_seconds=settings.timeout_seconds)
     except NotFound as e:
         msg = f"'{e.word}' not found."
         if e.suggestions:
             msg += "\n\nSuggestions:\n- " + "\n- ".join(e.suggestions[:10])
-        _print_error(msg)
-        raise typer.Exit(code=2)
+        _emit_error(
+            ctx,
+            msg,
+            code=2,
+            word=e.word,
+            suggestions=e.suggestions,
+            error_type="not_found",
+        )
     except ProviderError as e:
-        _print_error(str(e))
-        raise typer.Exit(code=2)
-
-    _print_section_md("Synonyms", result.word, result.items)
+        _emit_error(ctx, str(e), code=2, error_type="provider_error")
 
 
 @app.callback()
@@ -121,6 +177,12 @@ def main(
         "--provider",
         "-p",
         help=f"Provider to use (default: {DEFAULT_PROVIDER}).",
+        show_default=True,
+    ),
+    json_out: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit JSON output (machine-readable).",
         show_default=True,
     ),
     version: bool = typer.Option(
@@ -134,9 +196,13 @@ def main(
     """Global options shared by all commands."""
     ctx.ensure_object(dict)
     ctx.obj["provider"] = provider
+    ctx.obj["json"] = json_out
 
     if version:
-        console.print(__version__)
+        if json_out:
+            _emit_json({"ok": True, "version": __version__})
+        else:
+            console.print(__version__)
         raise typer.Exit(code=0)
 
 
@@ -158,8 +224,24 @@ def lookup(
     ),
 ) -> None:
     """Look up BOTH definitions and synonyms for a word."""
-    _run_define(ctx, word)
-    _run_synonyms(ctx, word, limit)
+    defs = _run_define(ctx, word)
+    syns = _run_synonyms(ctx, word, limit)
+
+    if _json_enabled(ctx):
+        _emit_json(
+            {
+                "ok": True,
+                "provider": _ctx_provider(ctx),
+                "word": word,
+                "definitions": list(defs.items),
+                "synonyms": list(syns.items),
+                "limit": limit,
+            }
+        )
+        return
+
+    _print_section_md("Definitions", defs.word, defs.items)
+    _print_section_md("Synonyms", syns.word, syns.items)
 
 
 @app.command("l")
@@ -186,7 +268,20 @@ def define(
     word: str = typer.Argument(..., help="Word to define."),
 ) -> None:
     """Look up definitions for a word."""
-    _run_define(ctx, word)
+    result = _run_define(ctx, word)
+
+    if _json_enabled(ctx):
+        _emit_json(
+            {
+                "ok": True,
+                "provider": _ctx_provider(ctx),
+                "word": result.word,
+                "definitions": list(result.items),
+            }
+        )
+        return
+
+    _print_section_md("Definitions", result.word, result.items)
 
 
 @app.command("d")
@@ -195,7 +290,7 @@ def d(
     word: str = typer.Argument(..., help="Alias for 'define'."),
 ) -> None:
     """Alias for define."""
-    _run_define(ctx, word)
+    define(ctx, word)
 
 
 @app.command("synonyms")
@@ -213,7 +308,21 @@ def synonyms(
     ),
 ) -> None:
     """Look up synonyms for a word."""
-    _run_synonyms(ctx, word, limit)
+    result = _run_synonyms(ctx, word, limit)
+
+    if _json_enabled(ctx):
+        _emit_json(
+            {
+                "ok": True,
+                "provider": _ctx_provider(ctx),
+                "word": result.word,
+                "synonyms": list(result.items),
+                "limit": limit,
+            }
+        )
+        return
+
+    _print_section_md("Synonyms", result.word, result.items)
 
 
 @app.command("s")
@@ -231,13 +340,18 @@ def s(
     ),
 ) -> None:
     """Alias for synonyms."""
-    _run_synonyms(ctx, word, limit)
+    synonyms(ctx, word, limit)
 
 
 @app.command("providers")
-def providers() -> None:
+def providers(ctx: typer.Context) -> None:
     """List available providers."""
     names = list_providers()
+
+    if _json_enabled(ctx):
+        _emit_json({"ok": True, "providers": list(names), "default": DEFAULT_PROVIDER})
+        return
+
     if not names:
         console.print("No providers registered.")
         raise typer.Exit(code=1)
@@ -245,9 +359,9 @@ def providers() -> None:
 
 
 @app.command("p")
-def p() -> None:
+def p(ctx: typer.Context) -> None:
     """Alias for providers."""
-    providers()
+    providers(ctx)
 
 
 if __name__ == "__main__":
