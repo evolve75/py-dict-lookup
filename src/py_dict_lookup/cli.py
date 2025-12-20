@@ -46,7 +46,7 @@ from py_dict_lookup.providers import register_builtin_providers
 register_builtin_providers()
 
 APP_NAME: Final[str] = "py-dict-lookup"
-console = Console()
+console = Console(force_terminal=None)
 
 app = typer.Typer(
     name=APP_NAME,
@@ -56,12 +56,24 @@ app = typer.Typer(
     help="Look up word definitions and synonyms from the command line.",
 )
 
+def _plain_output() -> bool:
+    return not sys.stdout.isatty()
+
 
 def _print_error(message: str) -> None:
+    if _plain_output():
+        print(f"Error: {message}", file=sys.stderr)
+        return
     console.print(Panel.fit(message, title="Error", border_style="red"))
 
 
 def _print_section_md(title: str, word: str, items: tuple[str, ...]) -> None:
+    if _plain_output():
+        print(f"{title}: {word}")
+        for i, item in enumerate(items, start=1):
+            print(f"{i}. {item}")
+        return
+
     lines = [f"# {title}: {word}", ""]
     for i, item in enumerate(items, start=1):
         lines.append(f"{i}. {item}")
