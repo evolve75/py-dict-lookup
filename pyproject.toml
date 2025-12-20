@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "py-dict-lookup"
+version = "0.1.0"
+description = "A Python CLI tool to look up word definitions and synonyms from online dictionaries and thesauri."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+
+authors = [
+    { name = "Anupam Sengupta", email = "anupamsg@gmail.com" }
+]
+
+classifiers = [
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Environment :: Console",
+]
+
+dependencies = [
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.1",
+    "rich>=14.2.0",
+    "typer>=0.20.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.14.10",
+]
+
+[project.urls]
+Repository = "https://github.com/evolve75/py-dict-lookup"
+Issues = "https://github.com/evolve75/py-dict-lookup/issues"
+
+[project.scripts]
+py-dict-lookup = "py_dict_lookup.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/py_dict_lookup"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
