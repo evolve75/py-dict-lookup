@@ -18,8 +18,78 @@ The current implementation uses the [Merriam-Webster APIs][mw] for:
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.12+
 - Merriam-Webster API keys (free tier available)
+
+## Installation (end users)
+
+You can install `py-dict-lookup` as an isolated CLI tool with either **pipx** or **uv tool**.
+
+### Option 1: pipx
+
+Install:
+
+```bash
+pipx install py-dict-lookup
+```
+
+Upgrade later:
+
+```bash
+pipx upgrade py-dict-lookup
+```
+
+### Option 2: uv
+
+```bash
+uv tool install py-dict-lookup
+```
+
+Upgrade later:
+
+```bash
+uv tool upgrade py-dict-lookup
+```
+
+### Run:
+
+```bash
+py-dict-lookup --help
+```
+
+### Configuration (API Keys)
+
+Create a .env file in your current directory (or export the env vars in your shell):
+
+```bash
+MW_COLLEGIATE_KEY=your_collegiate_key_here
+MW_THESAURUS_KEY=your_thesaurus_key_here
+```
+
+You can obtain keys from Merriam-Webster: <https://dictionaryapi.com/>.
+
+### Install directly from GitHub
+
+You can install the CLI directly from the GitHub repository without publishing to PyPI.
+
+Using `pipx`:
+
+```bash
+pipx install git+https://github.com/evolve75/py-dict-lookup.git
+```
+
+Using `uv`:
+
+```bash
+uv tool install git+https://github.com/evolve75/py-dict-lookup.git
+```
+
+> Tip: You can also install a specific branch, tag, or commit:
+
+```bash
+pipx install git+https://github.com/evolve75/py-dict-lookup.git@main
+uv tool install git+https://github.com/evolve75/py-dict-lookup.git@v0.1.0
+```
 
 ## Installation (development)
 
