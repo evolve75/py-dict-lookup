@@ -25,29 +25,32 @@ class DummyResponse:
 
 class DummyClient:
     """
-    A stand-in for httpx.Client.
+    A stand-in for httpx.Client used by the provider's connection-reuse logic.
 
     Provide `payloads` as an iterator of JSON payloads to return per call.
     Or set `raise_exc` to raise a specific exception on get().
+
+    This dummy also supports `.close()` because the provider closes its shared
+    client at process exit (atexit handler).
     """
 
     def __init__(self, payloads=None, raise_exc: Exception | None = None, **_kwargs) -> None:
         self._payloads = list(payloads or [])
         self._raise_exc = raise_exc
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        return None
-
-    def get(self, url, params=None):
+    def get(self, url, params=None, timeout=None):
+        # Provider passes timeout per request; accept it even if unused.
+        _ = timeout
         if self._raise_exc is not None:
             raise self._raise_exc
         if not self._payloads:
             raise AssertionError("No payloads configured for DummyClient")
         payload = self._payloads.pop(0)
         return DummyResponse(payload)
+
+    def close(self) -> None:
+        # Called by provider atexit handler; no-op for dummy.
+        return None
 
 
 def _settings(keys: bool = True) -> Settings:
@@ -56,6 +59,20 @@ def _settings(keys: bool = True) -> Settings:
         mw_thesaurus_key="tkey" if keys else None,
         timeout_seconds=1.0,
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Ensure each test starts with a clean shared-client state.
+
+    The provider caches a module-level client for connection reuse. We patch that
+    cached client to None before each test and avoid running the real atexit
+    close logic against a test dummy.
+    """
+    import py_dict_lookup.providers.merriam_webster as mw
+
+    monkeypatch.setattr(mw, "_CLIENT", None, raising=True)
 
 
 def test_define_missing_key_is_provider_error() -> None:
@@ -72,7 +89,7 @@ def test_synonyms_missing_key_is_provider_error() -> None:
     assert "MW_THESAURUS_KEY" in str(e.value)
 
 
-def test_define_not_found_suggestions(monkeypatch) -> None:
+def test_define_not_found_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:
     # MW "not found" returns list[str]
     monkeypatch.setattr(httpx, "Client", lambda **kw: DummyClient(payloads=[["alpha", "beta"]]))
     provider = MerriamWebsterProvider(_settings(keys=True))
@@ -83,7 +100,7 @@ def test_define_not_found_suggestions(monkeypatch) -> None:
     assert e.value.suggestions == ("alpha", "beta")
 
 
-def test_define_parses_shortdef(monkeypatch) -> None:
+def test_define_parses_shortdef(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = [
         {"shortdef": ["first def", "second def"]},
         {"shortdef": ["third def"]},
@@ -96,7 +113,7 @@ def test_define_parses_shortdef(monkeypatch) -> None:
     assert res.items == ("first def", "second def", "third def")
 
 
-def test_synonyms_parses_and_dedupes_and_limits(monkeypatch) -> None:
+def test_synonyms_parses_and_dedupes_and_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = [
         {"meta": {"syns": [["a", "b", "a"], ["c"]]}},
         {"meta": {"syns": [["b", "d"]]}},
@@ -116,10 +133,11 @@ def test_synonyms_limit_validation() -> None:
         provider.synonyms("word", limit=0, timeout_seconds=1.0)
 
 
-def test_http_status_error_maps_to_provider_error(monkeypatch) -> None:
+def test_http_status_error_maps_to_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # Return a response with status 401 -> raise_for_status -> HTTPStatusError
     class Client401(DummyClient):
-        def get(self, url, params=None):
+        def get(self, url, params=None, timeout=None):
+            _ = timeout
             return DummyResponse(payload=[], status_code=401)
 
     monkeypatch.setattr(httpx, "Client", lambda **kw: Client401(payloads=[]))
@@ -130,7 +148,7 @@ def test_http_status_error_maps_to_provider_error(monkeypatch) -> None:
     assert "HTTP error" in str(e.value)
 
 
-def test_request_error_maps_to_provider_error(monkeypatch) -> None:
+def test_request_error_maps_to_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
     exc = httpx.RequestError("network down", request=httpx.Request("GET", "https://x"))
     monkeypatch.setattr(httpx, "Client", lambda **kw: DummyClient(raise_exc=exc))
     provider = MerriamWebsterProvider(_settings(keys=True))
@@ -140,13 +158,14 @@ def test_request_error_maps_to_provider_error(monkeypatch) -> None:
     assert "Network error" in str(e.value)
 
 
-def test_invalid_json_maps_to_provider_error(monkeypatch) -> None:
+def test_invalid_json_maps_to_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class BadJSONResponse(DummyResponse):
         def json(self):
             raise ValueError("bad json")
 
     class ClientBadJSON(DummyClient):
-        def get(self, url, params=None):
+        def get(self, url, params=None, timeout=None):
+            _ = timeout
             return BadJSONResponse(payload=None, status_code=200)
 
     monkeypatch.setattr(httpx, "Client", lambda **kw: ClientBadJSON(payloads=[]))

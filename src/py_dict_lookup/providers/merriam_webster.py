@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final, Mapping, Sequence
 from urllib.parse import quote
+import atexit
+from threading import Lock
 
 import httpx
 
@@ -33,6 +35,30 @@ from py_dict_lookup.providers.base import (
 
 _COLLEGIATE_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/collegiate/json"
 _THESAURUS_BASE_URL: Final[str] = "https://www.dictionaryapi.com/api/v3/references/thesaurus/json"
+
+_CLIENT: httpx.Client | None = None
+_CLIENT_LOCK: Lock = Lock()
+
+
+def _get_client() -> httpx.Client:
+    """Return a shared httpx client (connection pool reuse)."""
+    global _CLIENT
+    if _CLIENT is not None:
+        return _CLIENT
+
+    with _CLIENT_LOCK:
+        if _CLIENT is None:
+            _CLIENT = httpx.Client()
+            atexit.register(_close_client)
+    return _CLIENT
+
+
+def _close_client() -> None:
+    """Close the shared client at process exit."""
+    global _CLIENT
+    if _CLIENT is not None:
+        _CLIENT.close()
+        _CLIENT = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +126,10 @@ def _fetch_json(*, base_url: str, word: str, api_key: str, timeout_seconds: floa
     params = {"key": api_key}
 
     try:
-        with httpx.Client(timeout=timeout_seconds) as client:
-            resp = client.get(url, params=params)
-            resp.raise_for_status()
-            return resp.json()
+        client = _get_client()
+        resp = client.get(url, params=params, timeout=timeout_seconds)
+        resp.raise_for_status()
+        return resp.json()
     except httpx.HTTPStatusError as e:
         raise ProviderError(f"Merriam-Webster API HTTP error: {e.response.status_code}") from e
     except httpx.RequestError as e:
