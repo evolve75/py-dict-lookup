@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from typer.testing import CliRunner
 
 from py_dict_lookup.cli import app

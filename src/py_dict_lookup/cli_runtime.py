@@ -13,31 +13,21 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
-from typing import Final, Optional
+from typing import Optional
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from py_dict_lookup.cli_types import (
+    RunConfig,
+    EXIT_OK,
+    EXIT_NOT_FOUND,
+    EXIT_CONFIG_ERROR,
+    EXIT_PROVIDER_ERROR,
+)
 from py_dict_lookup.config import Settings
 from py_dict_lookup.providers import DEFAULT_PROVIDER, NotFound, ProviderError, get_provider
-
-
-# Exit code spec
-EXIT_OK: Final[int] = 0
-EXIT_NOT_FOUND: Final[int] = 2
-EXIT_PROVIDER_ERROR: Final[int] = 3
-EXIT_CONFIG_ERROR: Final[int] = 4
-
-
-@dataclass(frozen=True, slots=True)
-class RunConfig:
-    """Runtime configuration derived from CLI options/context."""
-
-    provider: str
-    json: bool
-    rich: bool
 
 
 def is_config_error(message: str) -> bool:
