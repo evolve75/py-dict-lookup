@@ -13,21 +13,26 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Optional
+from typing import Callable, Optional, Protocol
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
 from py_dict_lookup.cli_types import (
-    RunConfig,
-    EXIT_OK,
-    EXIT_NOT_FOUND,
     EXIT_CONFIG_ERROR,
+    EXIT_NOT_FOUND,
+    EXIT_OK,
     EXIT_PROVIDER_ERROR,
+    RunConfig,
 )
 from py_dict_lookup.config import Settings
 from py_dict_lookup.providers import DEFAULT_PROVIDER, NotFound, ProviderError, get_provider
+
+
+class _HasWordItems(Protocol):
+    word: str
+    items: tuple[str, ...]
 
 
 def is_config_error(message: str) -> bool:
@@ -151,17 +156,32 @@ def normalize_provider(value: object) -> str:
     return DEFAULT_PROVIDER
 
 
-def run_define(*, cfg: RunConfig, console: Console, word: str) -> tuple[str, tuple[str, ...], int]:
+def _run_provider_call(
+    *,
+    cfg: RunConfig,
+    console: Console,
+    word: str,
+    call: Callable[[object, float], _HasWordItems],
+) -> tuple[str, tuple[str, ...], int]:
     """
-    Execute provider.define and return (word, definitions, exit_code).
+    Shared implementation for define/synonyms execution.
 
-    This never raises Typer Exit; the caller decides how/when to exit.
+    `call(provider, timeout_seconds)` must return an object with:
+      - `.word: str`
+      - `.items: tuple[str, ...]`
+
+    This function never raises Typer Exit; the caller decides how/when to exit.
     """
     settings = Settings.from_env()
     try:
         provider = get_provider(cfg.provider, settings)
-        result = provider.define(word, timeout_seconds=settings.timeout_seconds)
-        return result.word, result.items, EXIT_OK
+        result = call(provider, settings.timeout_seconds)
+
+        # Both DefinitionResult and SynonymsResult expose (word, items).
+        res_word = getattr(result, "word")
+        res_items = getattr(result, "items")
+        return str(res_word), tuple(res_items), EXIT_OK
+
     except NotFound as e:
         emit_error(
             console,
@@ -170,36 +190,31 @@ def run_define(*, cfg: RunConfig, console: Console, word: str) -> tuple[str, tup
             suggestions=list(e.suggestions[:10]),
         )
         return word, (), EXIT_NOT_FOUND
+
     except ProviderError as e:
         msg = str(e)
         code = EXIT_CONFIG_ERROR if is_config_error(msg) else EXIT_PROVIDER_ERROR
         emit_error(console, cfg=cfg, message=msg)
         return word, (), code
+
+
+def run_define(*, cfg: RunConfig, console: Console, word: str) -> tuple[str, tuple[str, ...], int]:
+    """Execute provider.define and return (word, definitions, exit_code)."""
+
+    def _call(provider: object, timeout_seconds: float) -> _HasWordItems:
+        return provider.define(word, timeout_seconds=timeout_seconds)  # type: ignore[attr-defined]
+
+    return _run_provider_call(cfg=cfg, console=console, word=word, call=_call)
 
 
 def run_synonyms(
     *, cfg: RunConfig, console: Console, word: str, limit: int
 ) -> tuple[str, tuple[str, ...], int]:
-    """
-    Execute provider.synonyms and return (word, synonyms, exit_code).
+    """Execute provider.synonyms and return (word, synonyms, exit_code)."""
 
-    This never raises Typer Exit; the caller decides how/when to exit.
-    """
-    settings = Settings.from_env()
-    try:
-        provider = get_provider(cfg.provider, settings)
-        result = provider.synonyms(word, limit=limit, timeout_seconds=settings.timeout_seconds)
-        return result.word, result.items, EXIT_OK
-    except NotFound as e:
-        emit_error(
-            console,
-            cfg=cfg,
-            message=f"'{e.word}' not found.",
-            suggestions=list(e.suggestions[:10]),
+    def _call(provider: object, timeout_seconds: float) -> _HasWordItems:
+        return provider.synonyms(  # type: ignore[attr-defined]
+            word, limit=limit, timeout_seconds=timeout_seconds
         )
-        return word, (), EXIT_NOT_FOUND
-    except ProviderError as e:
-        msg = str(e)
-        code = EXIT_CONFIG_ERROR if is_config_error(msg) else EXIT_PROVIDER_ERROR
-        emit_error(console, cfg=cfg, message=msg)
-        return word, (), code
+
+    return _run_provider_call(cfg=cfg, console=console, word=word, call=_call)
