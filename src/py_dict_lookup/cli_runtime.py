@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Callable, Optional, Protocol
+from typing import Literal, Optional
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -28,11 +28,9 @@ from py_dict_lookup.cli_types import (
 )
 from py_dict_lookup.config import Settings
 from py_dict_lookup.providers import DEFAULT_PROVIDER, NotFound, ProviderError, get_provider
+from py_dict_lookup.providers.base import DefinitionResult, Provider, SynonymsResult
 
-
-class _HasWordItems(Protocol):
-    word: str
-    items: tuple[str, ...]
+OpName = Literal["define", "synonyms"]
 
 
 def is_config_error(message: str) -> bool:
@@ -156,31 +154,57 @@ def normalize_provider(value: object) -> str:
     return DEFAULT_PROVIDER
 
 
-def _run_provider_call(
+def _extract_word_items(result: DefinitionResult | SynonymsResult) -> tuple[str, tuple[str, ...]]:
+    """Convert a provider result into the common (word, items) shape."""
+    return result.word, result.items
+
+
+def _call_provider(
+    provider: Provider,
+    *,
+    op: OpName,
+    word: str,
+    timeout_seconds: float,
+    limit: int,
+) -> tuple[str, tuple[str, ...]]:
+    """
+    Dispatch to the provider operation and return (word, items).
+
+    `limit` is ignored for `define` and used for `synonyms`.
+    """
+    if op == "define":
+        return _extract_word_items(provider.define(word, timeout_seconds=timeout_seconds))
+    return _extract_word_items(
+        provider.synonyms(word, limit=limit, timeout_seconds=timeout_seconds)
+    )
+
+
+def _run_word_items(
     *,
     cfg: RunConfig,
     console: Console,
+    op: OpName,
     word: str,
-    call: Callable[[object, float], _HasWordItems],
+    limit: int = 10,
 ) -> tuple[str, tuple[str, ...], int]:
     """
-    Shared implementation for define/synonyms execution.
+    Execute a provider operation and return (word, items, exit_code).
 
-    `call(provider, timeout_seconds)` must return an object with:
-      - `.word: str`
-      - `.items: tuple[str, ...]`
-
-    This function never raises Typer Exit; the caller decides how/when to exit.
+    This function emits errors according to cfg (JSON/plain/rich) and returns
+    an exit code for the caller to decide how/when to exit.
     """
     settings = Settings.from_env()
+
     try:
         provider = get_provider(cfg.provider, settings)
-        result = call(provider, settings.timeout_seconds)
-
-        # Both DefinitionResult and SynonymsResult expose (word, items).
-        res_word = getattr(result, "word")
-        res_items = getattr(result, "items")
-        return str(res_word), tuple(res_items), EXIT_OK
+        res_word, res_items = _call_provider(
+            provider,
+            op=op,
+            word=word,
+            timeout_seconds=settings.timeout_seconds,
+            limit=limit,
+        )
+        return res_word, res_items, EXIT_OK
 
     except NotFound as e:
         emit_error(
@@ -200,21 +224,11 @@ def _run_provider_call(
 
 def run_define(*, cfg: RunConfig, console: Console, word: str) -> tuple[str, tuple[str, ...], int]:
     """Execute provider.define and return (word, definitions, exit_code)."""
-
-    def _call(provider: object, timeout_seconds: float) -> _HasWordItems:
-        return provider.define(word, timeout_seconds=timeout_seconds)  # type: ignore[attr-defined]
-
-    return _run_provider_call(cfg=cfg, console=console, word=word, call=_call)
+    return _run_word_items(cfg=cfg, console=console, op="define", word=word, limit=10)
 
 
 def run_synonyms(
     *, cfg: RunConfig, console: Console, word: str, limit: int
 ) -> tuple[str, tuple[str, ...], int]:
     """Execute provider.synonyms and return (word, synonyms, exit_code)."""
-
-    def _call(provider: object, timeout_seconds: float) -> _HasWordItems:
-        return provider.synonyms(  # type: ignore[attr-defined]
-            word, limit=limit, timeout_seconds=timeout_seconds
-        )
-
-    return _run_provider_call(cfg=cfg, console=console, word=word, call=_call)
+    return _run_word_items(cfg=cfg, console=console, op="synonyms", word=word, limit=limit)
