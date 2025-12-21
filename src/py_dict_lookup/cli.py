@@ -44,6 +44,11 @@ from py_dict_lookup.providers import (
     register_builtin_providers,
 )
 
+EXIT_OK: Final[int] = 0
+EXIT_NOT_FOUND: Final[int] = 2
+EXIT_PROVIDER_ERROR: Final[int] = 3
+EXIT_CONFIG_ERROR: Final[int] = 4
+
 register_builtin_providers()
 
 APP_NAME: Final[str] = "py-dict-lookup"
@@ -56,6 +61,10 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Look up word definitions and synonyms from the command line.",
 )
+
+
+def _is_config_error(message: str) -> bool:
+    return message.startswith("Missing ")
 
 
 def _no_rich_enabled(ctx: typer.Context) -> bool:
@@ -134,7 +143,7 @@ def _emit_error(
     ctx: typer.Context,
     message: str,
     *,
-    code: int = 2,
+    code: int = EXIT_NOT_FOUND,
     word: str | None = None,
     suggestions: tuple[str, ...] | None = None,
     error_type: str = "error",
@@ -171,13 +180,15 @@ def _run_define(ctx: typer.Context, word: str):
         _emit_error(
             ctx,
             msg,
-            code=2,
+            code=EXIT_NOT_FOUND,
             word=e.word,
             suggestions=e.suggestions,
             error_type="not_found",
         )
     except ProviderError as e:
-        _emit_error(ctx, str(e), code=2, error_type="provider_error")
+        msg = str(e)
+        err_code = EXIT_CONFIG_ERROR if _is_config_error(msg) else EXIT_PROVIDER_ERROR
+        _emit_error(ctx, str(e), code=err_code, error_type="provider_error")
 
 
 def _run_synonyms(ctx: typer.Context, word: str, limit: int):
@@ -194,13 +205,15 @@ def _run_synonyms(ctx: typer.Context, word: str, limit: int):
         _emit_error(
             ctx,
             msg,
-            code=2,
+            code=EXIT_NOT_FOUND,
             word=e.word,
             suggestions=e.suggestions,
             error_type="not_found",
         )
     except ProviderError as e:
-        _emit_error(ctx, str(e), code=2, error_type="provider_error")
+        msg = str(e)
+        err_code = EXIT_CONFIG_ERROR if _is_config_error(msg) else EXIT_PROVIDER_ERROR
+        _emit_error(ctx, str(e), code=err_code, error_type="provider_error")
 
 
 @app.callback()

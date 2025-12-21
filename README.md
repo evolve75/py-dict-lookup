@@ -111,6 +111,34 @@ The default provider is:
 ```bash
 uv run py-dict-lookup providers
 ```
+## Exit codes
+
+`py-dict-lookup` uses predictable exit codes so it can be safely scripted:
+
+- **0** — Success
+- **2** — Word not found (includes suggestions when available)
+- **3** — Provider error (network/API/unknown provider, etc.)
+- **4** — Configuration error (missing required API key / config)
+
+Examples:
+
+```bash
+py-dict-lookup define serendipity
+echo $?  # 0
+
+py-dict-lookup define asdfasdfasdf
+echo $?  # 2
+
+py-dict-lookup --provider nope define test
+echo $?  # 3
+
+# Missing keys
+py-dict-lookup define test
+echo $?  # 4
+```
+
+When using `--json`, errors are still returned with the same exit codes,
+and the response includes an "error" field (and "suggestions" for not-found cases).
 
 ## Notes
 

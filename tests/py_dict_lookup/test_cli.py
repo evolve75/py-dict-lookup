@@ -50,16 +50,25 @@ class ErroringProvider(Provider):
     """
 
     name: str = "mw"
-    mode: str = "provider_error"  # "provider_error" | "not_found"
+    mode: str = "provider_error"  # "provider_error" | "not_found" | "config_error"
 
     def define(self, word: str, *, timeout_seconds: float) -> DefinitionResult:
         if self.mode == "not_found":
             raise NotFound(word=word, suggestions=("alpha", "beta"))
+        if self.mode == "config_error":
+            # Matches cli.py _is_config_error() heuristic: message.startswith("Missing ")
+            raise ProviderError(
+                "Missing DICT_LOOKUP_MW_COLLEGIATE_KEY. Set it in your environment or .env file."
+            )
         raise ProviderError("boom")
 
     def synonyms(self, word: str, *, limit: int, timeout_seconds: float) -> SynonymsResult:
         if self.mode == "not_found":
             raise NotFound(word=word, suggestions=("alpha", "beta"))
+        if self.mode == "config_error":
+            raise ProviderError(
+                "Missing DICT_LOOKUP_MW_THESAURUS_KEY. Set it in your environment or .env file."
+            )
         raise ProviderError("boom")
 
 
@@ -73,10 +82,7 @@ def fake_registry(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _parse_json_output(res_output: str) -> dict:
-    """
-    Helper for parsing JSON output.
-    We strip to tolerate trailing newlines.
-    """
+    """Helper for parsing JSON output (tolerate trailing newlines)."""
     return json.loads(res_output.strip())
 
 
@@ -97,7 +103,6 @@ def test_help_shows_primary_commands() -> None:
 
     out = _strip_ansi(res.output)
 
-    # Primary commands
     assert "define" in out
     assert "synonyms" in out
     assert "lookup" in out
@@ -141,7 +146,6 @@ def test_synonyms_default_limit() -> None:
     res = runner.invoke(app, ["synonyms", "fast"])
     assert res.exit_code == 0
     assert "Synonyms:" in res.output
-    # Default limit is 10 in the CLI; FakeProvider returns exactly `limit`.
     assert "syn10" in res.output
 
 
@@ -188,7 +192,6 @@ def test_no_rich_forces_plain_text(monkeypatch: pytest.MonkeyPatch) -> None:
 
     out = res.output
     assert "Definitions: test" in out
-    # Should not contain Rich panel box drawing used by rich output
     assert "┏" not in out
     assert "┃" not in out
 
@@ -202,7 +205,7 @@ def test_lookup_missing_word_is_error() -> None:
 
 def test_unknown_provider_is_error_text() -> None:
     res = runner.invoke(app, ["--provider", "nope", "define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 3
     assert "Unknown provider" in res.output
 
 
@@ -214,8 +217,20 @@ def test_provider_error_is_shown_text(monkeypatch: pytest.MonkeyPatch) -> None:
         raising=True,
     )
     res = runner.invoke(app, ["define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 3
     assert "boom" in res.output
+
+
+def test_config_error_is_exit_4_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        reg,
+        "_PROVIDERS",
+        {"mw": lambda settings: ErroringProvider(mode="config_error")},
+        raising=True,
+    )
+    res = runner.invoke(app, ["define", "x"])
+    assert res.exit_code == 4
+    assert "Missing" in res.output
 
 
 def test_not_found_includes_suggestions_text(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,7 +241,7 @@ def test_not_found_includes_suggestions_text(monkeypatch: pytest.MonkeyPatch) ->
         raising=True,
     )
     res = runner.invoke(app, ["define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 2
     assert "not found" in res.output.lower()
     assert "Suggestions" in res.output
     assert "alpha" in res.output
@@ -276,7 +291,7 @@ def test_providers_json() -> None:
 
 def test_unknown_provider_is_error_json() -> None:
     res = runner.invoke(app, ["--json", "--provider", "nope", "define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 3
     payload = _parse_json_output(res.output)
     assert "error" in payload
     assert "Unknown provider" in payload["error"]
@@ -290,9 +305,22 @@ def test_provider_error_is_json(monkeypatch: pytest.MonkeyPatch) -> None:
         raising=True,
     )
     res = runner.invoke(app, ["--json", "define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 3
     payload = _parse_json_output(res.output)
     assert payload["error"] == "boom"
+
+
+def test_config_error_is_exit_4_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        reg,
+        "_PROVIDERS",
+        {"mw": lambda settings: ErroringProvider(mode="config_error")},
+        raising=True,
+    )
+    res = runner.invoke(app, ["--json", "define", "x"])
+    assert res.exit_code == 4
+    payload = _parse_json_output(res.output)
+    assert "Missing" in payload["error"]
 
 
 def test_not_found_is_json_with_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -303,7 +331,7 @@ def test_not_found_is_json_with_suggestions(monkeypatch: pytest.MonkeyPatch) -> 
         raising=True,
     )
     res = runner.invoke(app, ["--json", "define", "x"])
-    assert res.exit_code != 0
+    assert res.exit_code == 2
     payload = _parse_json_output(res.output)
     assert "not found" in payload["error"].lower()
     assert payload["suggestions"] == ["alpha", "beta"]
