@@ -90,6 +90,36 @@ def emit_error(
         console.print("Suggestions:\n- " + "\n- ".join(suggestions))
 
 
+def emit_word_items(
+    console: Console,
+    *,
+    cfg: RunConfig,
+    title: str,
+    json_key: Literal["definitions", "synonyms"],
+    word: str,
+    items: tuple[str, ...],
+) -> None:
+    """
+    Emit a single word->items section in JSON/plain/rich mode.
+
+    This consolidates the shared logic used by definitions and synonyms.
+    """
+    if cfg.json:
+        write_json({"provider": cfg.provider, "word": word, json_key: list(items)})
+        return
+
+    if not cfg.rich:
+        console.print(f"{title}: {word}")
+        for i, item in enumerate(items, start=1):
+            console.print(f"{i}. {item}")
+        return
+
+    lines = [f"# {title}: {word}", ""]
+    for i, item in enumerate(items, start=1):
+        lines.append(f"{i}. {item}")
+    console.print(Markdown("\n".join(lines)))
+
+
 def emit_definitions(
     console: Console,
     *,
@@ -98,20 +128,14 @@ def emit_definitions(
     definitions: tuple[str, ...],
 ) -> None:
     """Emit definitions in JSON/plain/rich mode."""
-    if cfg.json:
-        write_json({"provider": cfg.provider, "word": word, "definitions": list(definitions)})
-        return
-
-    if not cfg.rich:
-        console.print(f"Definitions: {word}")
-        for i, d in enumerate(definitions, start=1):
-            console.print(f"{i}. {d}")
-        return
-
-    lines = [f"# Definitions: {word}", ""]
-    for i, d in enumerate(definitions, start=1):
-        lines.append(f"{i}. {d}")
-    console.print(Markdown("\n".join(lines)))
+    emit_word_items(
+        console,
+        cfg=cfg,
+        title="Definitions",
+        json_key="definitions",
+        word=word,
+        items=definitions,
+    )
 
 
 def emit_synonyms(
@@ -122,20 +146,14 @@ def emit_synonyms(
     synonyms: tuple[str, ...],
 ) -> None:
     """Emit synonyms in JSON/plain/rich mode."""
-    if cfg.json:
-        write_json({"provider": cfg.provider, "word": word, "synonyms": list(synonyms)})
-        return
-
-    if not cfg.rich:
-        console.print(f"Synonyms: {word}")
-        for i, s in enumerate(synonyms, start=1):
-            console.print(f"{i}. {s}")
-        return
-
-    lines = [f"# Synonyms: {word}", ""]
-    for i, s in enumerate(synonyms, start=1):
-        lines.append(f"{i}. {s}")
-    console.print(Markdown("\n".join(lines)))
+    emit_word_items(
+        console,
+        cfg=cfg,
+        title="Synonyms",
+        json_key="synonyms",
+        word=word,
+        items=synonyms,
+    )
 
 
 def emit_lookup_json(
