@@ -13,6 +13,7 @@ Global options:
 - --provider / -p: select provider (default: mw)
 - --version / -v: show version
 - --json: emit machine-readable JSON output
+- --no-rich: disable Rich formatting; force plain text
 - --help: built-in (Click/Typer)
 
 Notes:
@@ -57,19 +58,27 @@ app = typer.Typer(
 )
 
 
-def _plain_output() -> bool:
+def _no_rich_enabled(ctx: typer.Context) -> bool:
+    ctx.ensure_object(dict)
+    return bool(ctx.obj.get("no_rich"))
+
+
+def _plain_output(ctx: typer.Context | None = None) -> bool:
+    # Plain output if piping OR if explicitly requested.
+    if ctx is not None and _no_rich_enabled(ctx):
+        return True
     return not sys.stdout.isatty()
 
 
-def _print_error(message: str) -> None:
-    if _plain_output():
+def _print_error(ctx: typer.Context, message: str) -> None:
+    if _plain_output(ctx):
         print(f"Error: {message}", file=sys.stderr)
         return
     console.print(Panel.fit(message, title="Error", border_style="red"))
 
 
-def _print_section_md(title: str, word: str, items: tuple[str, ...]) -> None:
-    if _plain_output():
+def _print_section_md(ctx: typer.Context, title: str, word: str, items: tuple[str, ...]) -> None:
+    if _plain_output(ctx):
         print(f"{title}: {word}")
         for i, item in enumerate(items, start=1):
             print(f"{i}. {item}")
@@ -143,7 +152,7 @@ def _emit_error(
             payload["suggestions"] = list(suggestions)
         _emit_json(payload)
     else:
-        _print_error(message)
+        _print_error(ctx, message)
 
     raise typer.Exit(code=code)
 
@@ -217,15 +226,24 @@ def main(
         help="Show version and exit.",
         is_eager=True,
     ),
+    no_rich: bool = typer.Option(
+        False,
+        "--no-rich",
+        help="Disable Rich formatting; emit plain text (useful for dumb terminals and piping).",
+        show_default=True,
+    ),
 ) -> None:
     """Global options shared by all commands."""
     ctx.ensure_object(dict)
     ctx.obj["provider"] = provider
     ctx.obj["json"] = json_out
+    ctx.obj["no_rich"] = no_rich
 
     if version:
         if json_out:
             _emit_json({"ok": True, "version": __version__})
+        elif no_rich or not sys.stdout.isatty():
+            print(__version__)
         else:
             console.print(__version__)
         raise typer.Exit(code=0)
@@ -265,8 +283,8 @@ def lookup(
         )
         return
 
-    _print_section_md("Definitions", defs.word, defs.items)
-    _print_section_md("Synonyms", syns.word, syns.items)
+    _print_section_md(ctx, "Definitions", defs.word, defs.items)
+    _print_section_md(ctx, "Synonyms", syns.word, syns.items)
 
 
 @app.command("l")
@@ -306,7 +324,7 @@ def define(
         )
         return
 
-    _print_section_md("Definitions", result.word, result.items)
+    _print_section_md(ctx, "Definitions", result.word, result.items)
 
 
 @app.command("d")
@@ -347,7 +365,7 @@ def synonyms(
         )
         return
 
-    _print_section_md("Synonyms", result.word, result.items)
+    _print_section_md(ctx, "Synonyms", result.word, result.items)
 
 
 @app.command("s")

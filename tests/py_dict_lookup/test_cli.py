@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass
 
 import pytest
@@ -176,6 +177,20 @@ def test_lookup_alias_l() -> None:
     out = res.output
     assert "Definitions:" in out
     assert "Synonyms:" in out
+
+
+def test_no_rich_forces_plain_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Pretend stdout is a TTY so Rich would normally be used.
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    res = runner.invoke(app, ["--no-rich", "define", "test"])
+    assert res.exit_code == 0
+
+    out = res.output
+    assert "Definitions: test" in out
+    # Should not contain Rich panel box drawing used by rich output
+    assert "┏" not in out
+    assert "┃" not in out
 
 
 def test_lookup_missing_word_is_error() -> None:
