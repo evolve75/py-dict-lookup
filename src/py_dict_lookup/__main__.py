@@ -10,6 +10,5 @@ regardless of how the CLI is invoked.
 
 from py_dict_lookup.cli import app
 
-
 if __name__ == "__main__":
     app()

@@ -3,12 +3,11 @@ from __future__ import annotations
 import sys
 
 import pytest
+from conftest import ErroringProvider, strip_ansi
 from typer.testing import CliRunner
 
 from py_dict_lookup.cli import app
 from py_dict_lookup.providers import registry as reg
-
-from conftest import ErroringProvider, strip_ansi
 
 runner = CliRunner()
 

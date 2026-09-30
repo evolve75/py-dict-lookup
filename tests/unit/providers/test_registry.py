@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from py_dict_lookup.config import Settings
-from py_dict_lookup.providers.base import Provider, ProviderError
 from py_dict_lookup.providers import registry as reg
+from py_dict_lookup.providers.base import Provider, ProviderError
 
 
 class DummyProvider(Provider):

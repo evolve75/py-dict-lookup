@@ -58,10 +58,10 @@ class Provider(Protocol):
 
 
 __all__ = [
+    "DefinitionResult",
+    "NotFound",
     "Provider",
     "ProviderError",
-    "NotFound",
-    "UnsupportedOperation",
-    "DefinitionResult",
     "SynonymsResult",
+    "UnsupportedOperation",
 ]

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from conftest import ErroringProvider, parse_json_output
 from typer.testing import CliRunner
 
 from py_dict_lookup.cli import app
 from py_dict_lookup.providers import registry as reg
-
-from conftest import ErroringProvider, parse_json_output
 
 runner = CliRunner()
 

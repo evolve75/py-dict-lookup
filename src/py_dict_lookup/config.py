@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Final, Optional
+from typing import Final
 
 from dotenv import load_dotenv
 
@@ -22,8 +22,8 @@ DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 class Settings:
     """Runtime configuration loaded from environment variables."""
 
-    mw_collegiate_key: Optional[str]
-    mw_thesaurus_key: Optional[str]
+    mw_collegiate_key: str | None
+    mw_thesaurus_key: str | None
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
 
     @staticmethod
@@ -41,7 +41,7 @@ class Settings:
         )
 
 
-def _clean_env(name: str) -> Optional[str]:
+def _clean_env(name: str) -> str | None:
     """Return a stripped env var value, or None if missing/blank."""
     value = os.getenv(name)
     if value is None:
@@ -50,7 +50,7 @@ def _clean_env(name: str) -> Optional[str]:
     return value or None
 
 
-def _clean_timeout(value: Optional[str]) -> float:
+def _clean_timeout(value: str | None) -> float:
     """Parse a timeout value from env; fall back to DEFAULT_TIMEOUT_SECONDS."""
     if not value:
         return DEFAULT_TIMEOUT_SECONDS

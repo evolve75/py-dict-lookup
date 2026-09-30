@@ -8,7 +8,6 @@ Shared types and constants for the CLI.
 from dataclasses import dataclass
 from typing import Final
 
-
 # Exit code spec
 EXIT_OK: Final[int] = 0
 EXIT_NOT_FOUND: Final[int] = 2

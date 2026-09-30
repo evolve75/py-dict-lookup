@@ -29,13 +29,13 @@ def register_builtin_providers() -> None:
 
 
 __all__ = [
+    "DEFAULT_PROVIDER",
+    "DefinitionResult",
+    "NotFound",
     "Provider",
     "ProviderError",
-    "NotFound",
-    "UnsupportedOperation",
-    "DefinitionResult",
     "SynonymsResult",
-    "DEFAULT_PROVIDER",
+    "UnsupportedOperation",
     "get_provider",
     "list_providers",
     "register_builtin_providers",

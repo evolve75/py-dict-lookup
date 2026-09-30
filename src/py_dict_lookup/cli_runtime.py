@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Literal, Optional
+from typing import Literal
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -67,7 +67,7 @@ def emit_error(
     *,
     cfg: RunConfig,
     message: str,
-    suggestions: Optional[list[str]] = None,
+    suggestions: list[str] | None = None,
 ) -> None:
     """Emit an error in JSON/plain/rich mode."""
     if cfg.json:

@@ -8,7 +8,8 @@ This module centralizes how providers are discovered/constructed.
 
 from __future__ import annotations
 
-from typing import Callable, Final
+from collections.abc import Callable
+from typing import Final
 
 from py_dict_lookup.config import Settings
 from py_dict_lookup.providers.base import Provider, ProviderError

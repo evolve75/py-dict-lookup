@@ -16,11 +16,12 @@ Response shape:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Final, Mapping, Sequence
-from urllib.parse import quote
 import atexit
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from threading import Lock
+from typing import Any, Final
+from urllib.parse import quote
 
 import httpx
 

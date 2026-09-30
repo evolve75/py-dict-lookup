@@ -25,11 +25,6 @@ import typer
 from rich.markdown import Markdown
 
 from py_dict_lookup import __version__
-from py_dict_lookup.providers import DEFAULT_PROVIDER, list_providers
-
-# Ensure provider registration side-effects occur.
-from py_dict_lookup.providers import register_builtin_providers
-
 from py_dict_lookup.cli_runtime import (
     EXIT_OK,
     EXIT_PROVIDER_ERROR,
@@ -43,6 +38,9 @@ from py_dict_lookup.cli_runtime import (
     run_synonyms,
     write_json,
 )
+
+# Ensure provider registration side-effects occur.
+from py_dict_lookup.providers import DEFAULT_PROVIDER, list_providers, register_builtin_providers
 
 register_builtin_providers()
 

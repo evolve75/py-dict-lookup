@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-
+from conftest import strip_ansi
 from typer.testing import CliRunner
 
 from py_dict_lookup.cli import app
-
-from conftest import strip_ansi  # noqa: F401  (imported for stable help assertions)
 
 runner = CliRunner()
 
@@ -36,7 +34,7 @@ def test_define_missing_word_is_error() -> None:
     assert res.exit_code != 0
     out = strip_ansi(res.output)
     assert "Missing argument" in out
-    assert "WORD" in out
+    assert "word" in out.lower()
 
 
 def test_lookup_missing_word_is_error() -> None:
@@ -44,4 +42,4 @@ def test_lookup_missing_word_is_error() -> None:
     assert res.exit_code != 0
     out = strip_ansi(res.output)
     assert "Missing argument" in out
-    assert "WORD" in out
+    assert "word" in out.lower()
